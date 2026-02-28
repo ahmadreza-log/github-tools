@@ -10,26 +10,42 @@ const REPO = 'ahmadreza-log/github-tools';
 /** How many repo cards to load per "Load more" click. */
 const SIZE = 9;
 
-/** Repo or org page URLs (org = one card, no repos fetched). */
+/** Category labels (single word keys). */
+const TAGS = {
+    all: 'All',
+    badges: 'Badges',
+    icons: 'Icons',
+    stats: 'Stats',
+    code: 'Code',
+    org: 'Organizations',
+    avatar: 'Avatars',
+    generator: 'Generators'
+};
+
+/** Repo or org URLs with category tag. */
 const URLS = [
-    'https://github.com/badges/shields',
-    'https://github.com/simple-icons/simple-icons-website-rs',
-    'https://github.com/anuraghazra/github-readme-stats',
-    'https://github.com/denvercoder1/github-readme-streak-stats',
-    'https://github.com/badgen/badgen.net',
-    'https://github.com/tandpfun/skill-icons',
-    'https://github.com/devicons/devicon/',
-    'https://github.com/denvercoder1/readme-typing-svg',
-    'https://github.com/kyechan99/capsule-render',
-    'https://github.com/carbon-app/carbon',
-    'https://github.com/raycast/ray-so',
-    'https://github.com/lowlighter/metrics',
-    'https://github.com/vn7n24fzkq/github-profile-summary-cards',
-    'https://github.com/orgs/wakatime',
-    'https://github.com/Platane/snk',
-    'https://github.com/hehuapei/visitor-badge',
-    'https://github.com/rahuldkjain/github-profile-readme-generator',
-    'https://github.com/dicebear/dicebear'
+    { url: 'https://github.com/badges/shields', tag: 'badges' },
+    { url: 'https://github.com/simple-icons/simple-icons-website-rs', tag: 'icons' },
+    { url: 'https://github.com/anuraghazra/github-readme-stats', tag: 'stats' },
+    { url: 'https://github.com/denvercoder1/github-readme-streak-stats', tag: 'stats' },
+    { url: 'https://github.com/badgen/badgen.net', tag: 'badges' },
+    { url: 'https://github.com/tandpfun/skill-icons', tag: 'icons' },
+    { url: 'https://github.com/devicons/devicon/', tag: 'icons' },
+    { url: 'https://github.com/denvercoder1/readme-typing-svg', tag: 'code' },
+    { url: 'https://github.com/kyechan99/capsule-render', tag: 'code' },
+    { url: 'https://github.com/carbon-app/carbon', tag: 'code' },
+    { url: 'https://github.com/raycast/ray-so', tag: 'code' },
+    { url: 'https://github.com/lowlighter/metrics', tag: 'stats' },
+    { url: 'https://github.com/vn7n24fzkq/github-profile-summary-cards', tag: 'stats' },
+    { url: 'https://github.com/orgs/wakatime', tag: 'org' },
+    { url: 'https://github.com/Platane/snk', tag: 'code' },
+    { url: 'https://github.com/hehuapei/visitor-badge', tag: 'badges' },
+    { url: 'https://github.com/rahuldkjain/github-profile-readme-generator', tag: 'generator' },
+    { url: 'https://github.com/dicebear/dicebear', tag: 'avatar' },
+    { url: 'https://github.com/orgs/iconify', tag: 'org' },
+    { url: 'https://github.com/orgs/tabler', tag: 'org' },
+    { url: 'https://github.com/lucide-icons/lucide', tag: 'icons' },
+    { url: 'https://github.com/tailwindlabs/heroicons', tag: 'icons' },
 ];
 
 // ─── DOM refs ───────────────────────────────────────────────────────────
@@ -37,6 +53,8 @@ const URLS = [
 const counter = document.getElementById('stars-count');
 /** Container where repo cards are appended. */
 const grid = document.getElementById('repos');
+/** Category filter buttons container. */
+const bar = document.getElementById('filter');
 /** Wrapper for the "Load more" button (hidden when no more pages). */
 const wrap = document.getElementById('load-more-wrap');
 /** Load more button. */
@@ -137,7 +155,7 @@ const write = (url, data) => {
             PREFIX + url,
             JSON.stringify({ data, expires: Date.now() + TTL })
         );
-    } catch {}
+    } catch { }
 };
 
 /** Fetches a URL and returns parsed JSON; throws on non-OK response. */
@@ -183,9 +201,9 @@ const card = (repo, color) => {
     const home = repo.homepage && repo.homepage.startsWith('http');
     const href = home ? attrs(repo.homepage) : '';
 
-    const image = repo.owner?.avatar_url 
-    ? `<img src="${attrs(repo.owner.avatar_url)}" alt="" class="w-8 h-8 rounded-full object-contain">` 
-    : '';
+    const image = repo.owner?.avatar_url
+        ? `<img src="${attrs(repo.owner.avatar_url)}" alt="" class="w-8 h-8 rounded-full object-contain">`
+        : '';
 
     const link = home
         ? `<a target="_blank" href="${href}" class="${BTN}">${ICONS.link}</a>`
@@ -238,17 +256,32 @@ const skeleton = () => {
     return node;
 };
 
-// ─── Pagination ─────────────────────────────────────────────────────────
+// ─── Pagination & filter ───────────────────────────────────────────────
 
+let full = [];
 let list = [];
 let offset = 0;
+let filter = null;
 
 const resolve = () =>
     Promise.resolve(
-        URLS.map((url) =>
-            orgp(url) ? { type: 'org', url } : { type: 'repo', key: api(url) }
+        URLS.map((e) =>
+            orgp(e.url) ? { type: 'org', url: e.url, tag: e.tag } : { type: 'repo', key: api(e.url), tag: e.tag }
         )
     );
+
+const apply = (tag) => {
+    filter = tag;
+    list = tag ? full.filter((i) => i.tag === tag) : full;
+    offset = 0;
+    grid.innerHTML = '';
+    bar.querySelectorAll('button').forEach((b) => {
+        b.classList.toggle('bg-gray-700', b.dataset.tag === (tag || 'all'));
+        b.classList.toggle('bg-gray-800', b.dataset.tag !== (tag || 'all'));
+    });
+    next();
+    wrap.classList.toggle('hidden', list.length <= SIZE);
+};
 
 const next = () => {
     const slice = list.slice(offset, offset + SIZE);
@@ -298,11 +331,19 @@ cached(url)
     .then((res) => { counter.textContent = res.stargazers_count; })
     .catch((err) => console.error('Stars fetch failed:', err));
 
-// Resolve URLS (repos + orgs as single items), then load first page.
 resolve()
     .then((resolved) => {
-        list = resolved;
-        next();
-        if (list.length <= SIZE) wrap.classList.add('hidden');
+        full = resolved;
+        bar.innerHTML = '';
+        Object.entries(TAGS).forEach(([key, label]) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.dataset.tag = key;
+            b.textContent = label;
+            b.className = 'px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 ' + (key === 'all' ? 'bg-gray-700' : 'bg-gray-800 hover:bg-gray-700');
+            b.addEventListener('click', () => apply(key === 'all' ? null : key));
+            bar.appendChild(b);
+        });
+        apply(null);
     })
     .catch((err) => console.error('Resolve failed:', err));
